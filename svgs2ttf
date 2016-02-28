@@ -1,4 +1,4 @@
-#!/usr/bin/fontforge -script
+#!/usr/bin/env fontforge -script
 
 import sys
 import os.path

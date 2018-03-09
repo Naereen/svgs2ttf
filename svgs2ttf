@@ -66,7 +66,7 @@ def next_private():
 
 def addGlyphs(font, config):
     for k, v in config['glyphs'].items():
-        print("Adding glyph for character '{}' with path '{}'...".format(k, v))  # DEBUG
+        print("\nAdding glyph for character '{}' with path '{}'...".format(k, v))  # DEBUG
         ks = hex_of_str(k)
         if len(ks) == 1:
             # only one char, it has a unicode encoding
@@ -81,13 +81,17 @@ def addGlyphs(font, config):
             # print(u"Trying to add a glyph for a custom unicode symbol of encoding {}...".format(private_unicode_enc))  # DEBUG
 
             try:
-                # name = "ij"  # for instance
-                name = "".join(chr(int(i, 0)) for i in k.split('_'))
+                # name = "i_j"  # for instance
+                name = "_".join(chr(int(i, 0)) for i in k.split('_'))
             except:
                 # name = uni0D15_uni0D4D_uni0D15  # for instance
                 name = "_".join("uni{:0>4}".format(c.replace('0x','')) for c in k.split('_'))
             print(u"Trying to add a glyph for a custom name '{}'...".format(name))  # DEBUG
             g = font.createChar(-1, name)  # XXX How to give it a name?
+            g.glyphclass = 'baseligature'
+
+            tuple_of_name = tuple(name)
+            g.addPosSub('ligatureshi', tuple_of_name)
 
         # Get outlines
         src = '%s.svg' % k
@@ -102,21 +106,30 @@ def addGlyphs(font, config):
             print("For this key = '{}', and this value = '{}'...".format(k2, v2))  # DEBUG
             if hasattr(g, k2):
                 if isinstance(v2, list) and isinstance(v2[0], list):
-                    v2 = tuple(tuple(v2i) for v2i in v2)
-                    print("Adding tuple of tuples as attribute... v2 = '{}'...".format(v2))  # DEBUG
+                    # v2 = tuple(tuple(v2i) for v2i in v2)
+                    # print("Adding tuple of tuples as attribute... v2 = '{}'...".format(v2))  # DEBUG
+                    assert k2 == "anchorPoints"
+                    for (anchor_class_name, anchor_type, x, y, i) in v2:
+                        print("Adding this anchorPoint:", (anchor_class_name, anchor_type, x, y, i))  # DEBUG
+                        g.addAnchorPoint(anchor_class_name, anchor_type, x, y, i)
                 elif isinstance(v2, list):
                     v2 = tuple(v2)
                     print("Adding tuple as attribute... v2 = '{}'...".format(v2))  # DEBUG
+                    setattr(g, k2, v2)
                 else:
                     print("Adding a single attribute...")  # DEBUG
-                setattr(g, k2, v2)
-        print("Glyph name: '{}'".format(g.glyphname))  # DEBUG
+                    setattr(g, k2, v2)
+        print("Glyph name: '{}' and class '{}' (type {})...".format(g.glyphname, g.glyphclass, type(g.glyphclass)))  # DEBUG
 
 
 def main(config_file):
     config = loadConfig(config_file)
     os.chdir(os.path.dirname(config_file) or '.')
     font = fontforge.font()
+    # https://stackoverflow.com/a/35466349/
+    font.addLookup('ligatures', 'gsub_ligature', (), [['rlig', [['arab', ['dflt']]]]])
+    font.addLookupSubtable('ligatures', 'ligatureshi')
+    # XXX
     setProperties(font, config)
     addGlyphs(font, config)
     for outfile in config['output']:

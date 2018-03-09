@@ -11,9 +11,23 @@ try:
 except NameError:
     unicode = str
 
+try:
+    unichr
+except NameError:
+    unichr = chr
+
+
+def hex_of_str(one_or_more_hex):
+    if not '_' in one_or_more_hex:
+        return [int(one_or_more_hex, 0)]
+    else:
+        return [int(c, 0) for c in one_or_more_hex.split('_')]
+
+
 def loadConfig(filename='font.json'):
     with open(filename) as f:
         return json.load(f)
+
 
 def setProperties(font, config):
     props = config['props']
@@ -35,9 +49,46 @@ def setProperties(font, config):
     for t in config.get('sfnt_names', []):
         font.appendSFNTName(str(t[0]), str(t[1]), unicode(t[2]))
 
+
+# ---
+# See https://en.wikipedia.org/wiki/Private_Use_Areas
+
+unicode_private_area_start_point = ord(u'\uE000')
+unicode_private_area = unicode_private_area_start_point
+
+def next_private():
+    global unicode_private_area
+    unicode_private_area += 1
+    return unichr(unicode_private_area - 1)
+
+
+# ---
+
 def addGlyphs(font, config):
     for k, v in config['glyphs'].items():
-        g = font.createMappedChar(int(k, 0))
+        print("Adding glyph for character '{}' with path '{}'...".format(k, v))  # DEBUG
+        ks = hex_of_str(k)
+        if len(ks) == 1:
+            # only one char, it has a unicode encoding
+            true_unicode_enc = ks[0]
+            print("Adding a glyph for a unicode symbol of encoding '{}' for symbol '{}' = '{}'...".format(true_unicode_enc, k, chr(int(k, 0))))  # DEBUG
+            g = font.createMappedChar(true_unicode_enc)
+        else:
+            # more than one char, so a ligature glyph
+
+            # # we use a private unicode encoding
+            # private_unicode_enc = next_private()
+            # print(u"Trying to add a glyph for a custom unicode symbol of encoding {}...".format(private_unicode_enc))  # DEBUG
+
+            try:
+                # name = "ij"  # for instance
+                name = "".join(chr(int(i, 0)) for i in k.split('_'))
+            except:
+                # name = uni0D15_uni0D4D_uni0D15  # for instance
+                name = "_".join("uni{:0>4}".format(c.replace('0x','')) for c in k.split('_'))
+            print(u"Trying to add a glyph for a custom name '{}'...".format(name))  # DEBUG
+            g = font.createChar(-1, name)  # XXX How to give it a name?
+
         # Get outlines
         src = '%s.svg' % k
         if not isinstance(v, dict):
@@ -45,12 +96,22 @@ def addGlyphs(font, config):
         src = '%s%s%s' % (config.get('input', '.'), os.path.sep, v.pop('src', src))
         g.importOutlines(src, IMPORT_OPTIONS)
         g.removeOverlap()
+
         # Copy attributes
         for k2, v2 in v.items():
+            print("For this key = '{}', and this value = '{}'...".format(k2, v2))  # DEBUG
             if hasattr(g, k2):
-                if isinstance(v2, list):
+                if isinstance(v2, list) and isinstance(v2[0], list):
+                    v2 = tuple(tuple(v2i) for v2i in v2)
+                    print("Adding tuple of tuples as attribute... v2 = '{}'...".format(v2))  # DEBUG
+                elif isinstance(v2, list):
                     v2 = tuple(v2)
+                    print("Adding tuple as attribute... v2 = '{}'...".format(v2))  # DEBUG
+                else:
+                    print("Adding a single attribute...")  # DEBUG
                 setattr(g, k2, v2)
+        print("Glyph name: '{}'".format(g.glyphname))  # DEBUG
+
 
 def main(config_file):
     config = loadConfig(config_file)
@@ -61,6 +122,7 @@ def main(config_file):
     for outfile in config['output']:
         sys.stderr.write('Generating %s...\n' % outfile)
         font.generate(outfile)
+
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
